@@ -9,8 +9,9 @@ WORKDIR /app
 COPY package-lock.json ./
 RUN pnpm install
 
-# Error 3: missing health check endpoint
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/healthz || exit 1
 
 # Error 4: running as root (security issue)
 CMD ["npm", "start"]
