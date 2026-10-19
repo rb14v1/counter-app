@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM node:20-alpine AS builder
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
 
 WORKDIR /app
 COPY package.json package-lock.json* pnpm-lock.yaml* yarn.lock* ./
@@ -9,13 +11,12 @@ RUN npm run build || pnpm build || yarn build || true
 
 FROM node:20-alpine
 
-RUN addgroup --gid 1000 nodeuser && adduser --uid 1000 --gid 1000 --home /app --disabled-password nodeuser
 COPY --from=builder /app /app
 
-USER nodeuser
+USER node
 
-EXPOSE 3000
+EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3000/healthz || exit 1
+  CMD wget -qO- http://localhost:8080/healthz || exit 1
 
 CMD ["node", "server.js"]
