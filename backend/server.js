@@ -2,7 +2,11 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const pino = require('pino');
+const pinoHttp = require('pino-http');
 const { getPool } = require('./db');
+
+const logger = pino({ level: 'info' });
 
 const PORT = process.env.PORT || 8080;
 
@@ -14,6 +18,7 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 
 const app = express();
 app.use(cors(allowedOrigins.length > 0 ? { origin: allowedOrigins } : {}));
+app.use(pinoHttp({ logger }));
 app.use(express.json({ limit: '10kb' }));
 
 async function databaseState() {
@@ -81,9 +86,9 @@ counter.put('/', asyncRoute(async (req, res) => {
 
 app.use('/api/counter', counter);
 
-app.use((err, _req, res, _next) => {
+app.use((err, req, res, _next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
-  console.error(err);
+  (req.log || logger).error({ err, requestId: req.id }, 'Unhandled error');
   // A broken connection or a missing table means the database is not ready; say so instead of a bare 500.
   if (err.code && /^(ECONN|ETIMEDOUT|ENOTFOUND|PROTOCOL_|ER_NO_SUCH_TABLE|ER_ACCESS_DENIED)/.test(err.code)) {
     return res.status(503).json({ error: 'The database is not ready.' });
@@ -92,5 +97,5 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Counter API listening on port ${PORT}`);
+  logger.info({ port: PORT }, `Counter API listening on port ${PORT}`);
 });
