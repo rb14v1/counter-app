@@ -1,9 +1,26 @@
 
-output "sql_database_connection" {
-  value     = "Server=tcp:${azurerm_mssql_server.sql.fully_qualified_domain_name},1433;Database=${azurerm_mssql_database.sql.name};User ID=sqladmin;Password=${random_password.sql_admin.result};Encrypt=true"
+output "mysql_connection" {
+  value     = "mysql://mysqladmin:${random_password.mysql_admin.result}@${azurerm_mysql_flexible_server.mysql.fqdn}:3306/appdb"
   sensitive = true
 }
 
-output "log_analytics_workspace_id" {
-  value = azurerm_log_analytics_workspace.law.workspace_id
+output "mysql_host" {
+  value = azurerm_mysql_flexible_server.mysql.fqdn
+}
+
+output "mysql_port" {
+  value = "3306"
+}
+
+output "mysql_database" {
+  value = azurerm_mysql_flexible_database.mysql.name
+}
+
+output "mysql_user" {
+  value = "mysqladmin"
+}
+
+output "mysql_password" {
+  value     = random_password.mysql_admin.result
+  sensitive = true
 }
