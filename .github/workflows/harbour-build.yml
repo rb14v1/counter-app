@@ -46,4 +46,4 @@ jobs:
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ steps.repo.outputs.name }}:${{ matrix.component }}-latest
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ steps.repo.outputs.name }}:${{ matrix.component }}-${{ github.sha }}
           build-args: |
-            ${{ matrix.component == 'frontend' && format('VITE_API_URL=https://counter-app-xyz-backend.whitewave-bd9bb8d2.uksouth.azurecontainerapps.io/api') || '' }}
+            ${{ matrix.component == 'frontend' && 'VITE_API_URL=https://counter-app-xyz-backend.whitewave-bd9bb8d2.uksouth.azurecontainerapps.io/api' || '' }}
