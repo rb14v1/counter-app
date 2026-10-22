@@ -36,12 +36,14 @@ jobs:
       - name: Lowercase the image repository
         id: repo
         run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v6
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
         with:
-          build-args: ${{ matrix.component == 'frontend' && 'VITE_API_URL=https://counter-app-xyz-backend.whitewave-bd9bb8d2.uksouth.azurecontainerapps.io/api' || '' }}
           context: ${{ steps.dockerfile.outputs.context }}
           file: ${{ steps.dockerfile.outputs.path }}
           push: true
           tags: |
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ steps.repo.outputs.name }}:${{ matrix.component }}-latest
             ${{ secrets.ACR_NAME }}.azurecr.io/${{ steps.repo.outputs.name }}:${{ matrix.component }}-${{ github.sha }}
+          build-args: |
+            ${{ matrix.component == 'frontend' && format('VITE_API_URL=https://counter-app-xyz-backend.whitewave-bd9bb8d2.uksouth.azurecontainerapps.io/api') || '' }}
