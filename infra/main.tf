@@ -1,3 +1,4 @@
+# Serves components: backend-api, web
 terraform {
   required_providers {
     azurerm = {
@@ -19,62 +20,59 @@ provider "azurerm" {
 }
 
 
-resource "azurerm_mssql_server" "sql" {
-  name                         = "sql-counter-app"
-  resource_group_name          = "counter-app"
-  location                     = "uksouth"
-  version                      = "12.0"
-  administrator_login          = "sqladmin"
-  administrator_login_password = random_password.sql_admin.result
-  public_network_access_enabled = false
-}
-
-resource "random_password" "sql_admin" {
+resource "random_password" "mysql_admin" {
   length  = 24
   special = true
 }
 
-resource "azurerm_mssql_database" "sql" {
-  name      = "db-counter-app"
-  server_id = azurerm_mssql_server.sql.id
-  sku_name  = "Basic"
+resource "azurerm_private_dns_zone" "mysql_dns_zone" {
+  name                = "hbr-counter-app-xyz.mysql.database.azure.com"
+  resource_group_name = "counter-app-xyz"
 }
 
-resource "azurerm_private_dns_zone" "sql_dns_zone" {
-  name                = "privatelink.database.windows.net"
-  resource_group_name = "counter-app"
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "sql_dns_zone_link" {
-  name                  = "link-counter-app"
-  resource_group_name   = "counter-app"
-  private_dns_zone_name = azurerm_private_dns_zone.sql_dns_zone.name
+resource "azurerm_private_dns_zone_virtual_network_link" "mysql_dns_zone_link" {
+  name                  = "link-mysql-counter-app-xyz"
+  resource_group_name   = "counter-app-xyz"
+  private_dns_zone_name = azurerm_private_dns_zone.mysql_dns_zone.name
   virtual_network_id    = var.vnet_id
 }
 
-resource "azurerm_private_endpoint" "sql_pe" {
-  name                = "pe-sql-counter-app"
-  resource_group_name = "counter-app"
-  location            = "uksouth"
-  subnet_id           = var.subnet_id
+resource "azurerm_mysql_flexible_server" "mysql" {
+  name                   = "mysql-counter-app-xyz"
+  resource_group_name    = "counter-app-xyz"
+  location               = "uksouth"
+  version                = "8.0.21"
+  sku_name               = "B_Standard_B1ms"
+  administrator_login    = "mysqladmin"
+  administrator_password = random_password.mysql_admin.result
+  backup_retention_days  = 7
+  delegated_subnet_id    = var.mysql_subnet_id
+  private_dns_zone_id    = azurerm_private_dns_zone.mysql_dns_zone.id
 
-  private_service_connection {
-    name                           = "sql-privateserviceconnection"
-    private_connection_resource_id = azurerm_mssql_server.sql.id
-    subresource_names              = ["sqlServer"]
-    is_manual_connection           = false
+  storage {
+    size_gb = 20
   }
 
-  private_dns_zone_group {
-    name                 = "sql-dns-zone-group"
-    private_dns_zone_ids = [azurerm_private_dns_zone.sql_dns_zone.id]
+  # Azure picks an availability zone when none is declared; a later apply then reads that as drift. Same
+  # reasoning as the PostgreSQL block: ignore an attribute this config never set an opinion on.
+  lifecycle {
+    ignore_changes = [zone]
   }
+
+  depends_on = [azurerm_private_dns_zone_virtual_network_link.mysql_dns_zone_link]
 }
 
-resource "azurerm_log_analytics_workspace" "law" {
-  name                = "law-counter-app"
-  resource_group_name = "counter-app"
-  location            = "uksouth"
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
+resource "azurerm_mysql_flexible_database" "mysql" {
+  name                = "appdb"
+  resource_group_name = "counter-app-xyz"
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  charset             = "utf8mb4"
+  collation           = "utf8mb4_unicode_ci"
+}
+
+resource "azurerm_mysql_flexible_server_configuration" "mysql_secure_transport" {
+  name                = "require_secure_transport"
+  resource_group_name = "counter-app-xyz"
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  value               = "OFF"
 }
