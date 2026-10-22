@@ -2,6 +2,11 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const pino = require('pino');
+const pinoHttp = require('pino-http');
+const { getPool } = require('./db');
+
+const logger = pino({ level: 'info' });
 const { getPool } = require('./db');
 const client = require('prom-client');
 
@@ -48,6 +53,9 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 
 const app = express();
 app.use(cors(allowedOrigins.length > 0 ? { origin: allowedOrigins } : {}));
+app.use(pinoHttp({ logger }));
+app.use(express.json({ limit: '10kb' }));
+
 app.use(express.json({ limit: '10kb' }));
 
 // ── Metrics middleware ───────────────────────────────────────────────────────
@@ -148,6 +156,9 @@ counter.put('/', asyncRoute(async (req, res) => {
 
 app.use('/api/counter', counter);
 
+app.use((err, req, res, _next) => {
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
+  (req.log || logger).error({ err, requestId: req.id }, 'Unhandled error');
 app.use((err, _req, res, _next) => {
   if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON.' });
   console.error(err);
@@ -159,5 +170,6 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
+  logger.info({ port: PORT }, `Counter API listening on port ${PORT}`);
   console.log(`Counter API listening on port ${PORT}`);
 });
