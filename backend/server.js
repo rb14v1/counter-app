@@ -3,6 +3,40 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { getPool } = require('./db');
+const client = require('prom-client');
+
+// ── Prometheus metrics setup ─────────────────────────────────────────────────
+const register = new client.Registry();
+client.collectDefaultMetrics({ register });
+
+const httpRequestsTotal = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total number of HTTP requests',
+  labelNames: ['method', 'route', 'status_code'],
+  registers: [register],
+});
+
+const httpRequestDurationSeconds = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [register],
+});
+
+const httpErrorsTotal = new client.Counter({
+  name: 'http_errors_total',
+  help: 'Total number of HTTP 5xx error responses',
+  labelNames: ['method', 'route'],
+  registers: [register],
+});
+
+const activeConnections = new client.Gauge({
+  name: 'http_active_connections',
+  help: 'Current number of active HTTP connections (requests in flight)',
+  registers: [register],
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 8080;
 
@@ -15,6 +49,29 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 const app = express();
 app.use(cors(allowedOrigins.length > 0 ? { origin: allowedOrigins } : {}));
 app.use(express.json({ limit: '10kb' }));
+
+// ── Metrics middleware ───────────────────────────────────────────────────────
+app.use((req, res, next) => {
+  // Track requests in flight as a proxy for active connections
+  activeConnections.inc();
+  let decremented = false;
+  const decrement = () => { if (!decremented) { decremented = true; activeConnections.dec(); } };
+  res.on('finish', decrement);
+  res.on('close', decrement);
+
+  // Track duration, request count, and errors per route
+  const startNs = process.hrtime.bigint();
+  res.on('finish', () => {
+    const route = req.route ? (req.baseUrl + req.route.path) : req.path;
+    const labels = { method: req.method, route, status_code: String(res.statusCode) };
+    httpRequestsTotal.inc(labels);
+    httpRequestDurationSeconds.observe(labels, Number(process.hrtime.bigint() - startNs) / 1e9);
+    if (res.statusCode >= 500) httpErrorsTotal.inc({ method: req.method, route });
+  });
+
+  next();
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function databaseState() {
   const pool = getPool();
@@ -30,6 +87,16 @@ async function databaseState() {
 // Always 200 while the server is up, so the platform keeps the container running while the database is still being reached.
 app.get('/healthz', async (_req, res) => {
   res.json({ status: 'ok', database: await databaseState() });
+});
+
+// Prometheus-compatible metrics endpoint (text/plain; version=0.0.4)
+app.get('/metrics', async (_req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err.message);
+  }
 });
 
 const asyncRoute = (handler) => (req, res, next) => handler(req, res).catch(next);
