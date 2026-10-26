@@ -26,27 +26,26 @@ resource "random_password" "mysql_admin" {
 }
 
 resource "azurerm_private_dns_zone" "mysql_dns_zone" {
-  name                = "hbr-counter-app-xyz.mysql.database.azure.com"
-  resource_group_name = "counter-app-xyz"
+  name                = "hbr-counter-app-hij.mysql.database.azure.com"
+  resource_group_name = "counter-app-hij"
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "mysql_dns_zone_link" {
-  name                  = "link-mysql-counter-app-xyz"
-  resource_group_name   = "counter-app-xyz"
+  name                  = "link-mysql-counter-app-hij"
+  resource_group_name   = "counter-app-hij"
   private_dns_zone_name = azurerm_private_dns_zone.mysql_dns_zone.name
   virtual_network_id    = var.vnet_id
 }
 
 resource "azurerm_mysql_flexible_server" "mysql" {
-  name                   = "mysql-counter-app-xyz"
-  resource_group_name    = "counter-app-xyz"
+  name                   = "mysql-counter-app-hij"
+  resource_group_name    = "counter-app-hij"
   location               = "uksouth"
   version                = "8.0.21"
   sku_name               = "B_Standard_B1ms"
   administrator_login    = "mysqladmin"
   administrator_password = random_password.mysql_admin.result
-  backup_retention_days        = 35
-  geo_redundant_backup_enabled = true
+  backup_retention_days  = 7
   delegated_subnet_id    = var.mysql_subnet_id
   private_dns_zone_id    = azurerm_private_dns_zone.mysql_dns_zone.id
 
@@ -65,7 +64,7 @@ resource "azurerm_mysql_flexible_server" "mysql" {
 
 resource "azurerm_mysql_flexible_database" "mysql" {
   name                = "appdb"
-  resource_group_name = "counter-app-xyz"
+  resource_group_name = "counter-app-hij"
   server_name         = azurerm_mysql_flexible_server.mysql.name
   charset             = "utf8mb4"
   collation           = "utf8mb4_unicode_ci"
@@ -73,7 +72,7 @@ resource "azurerm_mysql_flexible_database" "mysql" {
 
 resource "azurerm_mysql_flexible_server_configuration" "mysql_secure_transport" {
   name                = "require_secure_transport"
-  resource_group_name = "counter-app-xyz"
+  resource_group_name = "counter-app-hij"
   server_name         = azurerm_mysql_flexible_server.mysql.name
   value               = "OFF"
 }
